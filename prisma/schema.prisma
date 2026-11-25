@@ -1,0 +1,449 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  owner
+  admin
+  supervisor
+  worker
+  client
+}
+
+enum ProjectStatus {
+  planning
+  active
+  on_hold
+  completed
+  cancelled
+}
+
+enum AttendanceStatus {
+  present
+  absent
+  half_day
+  overtime
+}
+
+enum PaymentMethod {
+  cash
+  bank_transfer
+  upi
+  cheque
+  other
+}
+
+enum MaterialTxnType {
+  purchase
+  consumption
+  return
+  adjustment
+}
+
+enum WageStatus {
+  draft
+  approved
+  paid
+}
+
+enum AdvanceStatus {
+  pending
+  deducted
+  cancelled
+}
+
+enum PaymentStatus {
+  pending
+  received
+  overdue
+}
+
+// ─── USER / AUTH ─────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         UserRole
+  isActive     Boolean  @default(true)
+  phone        String?
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  worker   Worker?
+  client   Client?
+  sessions Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ─── CLIENTS ─────────────────────────────────────────────────────────────────
+
+model Client {
+  id        String   @id @default(cuid())
+  userId    String?  @unique
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  gstNumber String?
+  notes     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User?           @relation(fields: [userId], references: [id])
+  projects Project[]
+  payments ClientPayment[]
+
+  @@map("clients")
+}
+
+// ─── PROJECTS ────────────────────────────────────────────────────────────────
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  clientId    String
+  status      ProjectStatus @default(planning)
+  startDate   DateTime?
+  endDate     DateTime?
+  budget      Decimal?      @db.Decimal(14, 2)
+  address     String?
+  description String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  client          Client                @relation(fields: [clientId], references: [id])
+  expenses        Expense[]
+  materials       MaterialTransaction[]
+  assignments     ProjectAssignment[]
+  progressReports ProgressReport[]
+  wages           Wage[]
+  attendance      Attendance[]
+  payments        ClientPayment[]
+  documents       Document[]
+
+  @@map("projects")
+}
+
+model ProjectAssignment {
+  id        String    @id @default(cuid())
+  projectId String
+  userId    String
+  role      String?
+  startDate DateTime?
+  endDate   DateTime?
+  createdAt DateTime  @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_assignments")
+}
+
+// ─── WORKERS ─────────────────────────────────────────────────────────────────
+
+model Worker {
+  id                 String    @id @default(cuid())
+  userId             String?   @unique
+  name               String
+  role               String // e.g., Mason, Carpenter, Electrician
+  phone              String?
+  email              String?
+  address            String?
+  dailyWage          Decimal?  @db.Decimal(10, 2)
+  overtimeMultiplier Decimal   @default(1.5) @db.Decimal(4, 2)
+  joinDate           DateTime?
+  skills             String[]  @default([])
+  emergencyContact   String?
+  notes              String?
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  user            User?            @relation(fields: [userId], references: [id])
+  attendance      Attendance[]
+  wages           Wage[]
+  advances        Advance[]
+  progressReports ProgressReport[]
+
+  @@map("workers")
+}
+
+// ─── ATTENDANCE ──────────────────────────────────────────────────────────────
+
+model Attendance {
+  id        String           @id @default(cuid())
+  workerId  String
+  projectId String
+  date      DateTime         @db.Date
+  status    AttendanceStatus
+  checkIn   String?
+  checkOut  String?
+  notes     String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  worker  Worker  @relation(fields: [workerId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@unique([workerId, projectId, date])
+  @@index([date])
+  @@index([workerId])
+  @@map("attendance")
+}
+
+// ─── WAGES ───────────────────────────────────────────────────────────────────
+
+model Wage {
+  id           String     @id @default(cuid())
+  workerId     String
+  projectId    String?
+  weekStart    DateTime   @db.Date
+  weekEnd      DateTime   @db.Date
+  normalDays   Int        @default(0)
+  halfDays     Int        @default(0)
+  overtimeDays Int        @default(0)
+  grossWage    Decimal    @db.Decimal(12, 2)
+  deductions   Decimal    @default(0) @db.Decimal(12, 2)
+  netWage      Decimal    @db.Decimal(12, 2)
+  status       WageStatus @default(draft)
+  approvedById String?
+  paidAt       DateTime?
+  notes        String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  worker   Worker    @relation(fields: [workerId], references: [id])
+  project  Project?  @relation(fields: [projectId], references: [id])
+  advances Advance[]
+
+  @@map("wages")
+}
+
+model Advance {
+  id           String        @id @default(cuid())
+  workerId     String
+  wageId       String?
+  amount       Decimal       @db.Decimal(10, 2)
+  date         DateTime
+  status       AdvanceStatus @default(pending)
+  notes        String?
+  recordedById String?
+  createdAt    DateTime      @default(now())
+
+  worker Worker @relation(fields: [workerId], references: [id])
+  wage   Wage?  @relation(fields: [wageId], references: [id])
+
+  @@map("advances")
+}
+
+// ─── EXPENSES ────────────────────────────────────────────────────────────────
+
+model Expense {
+  id            String         @id @default(cuid())
+  projectId     String
+  category      String
+  description   String
+  amount        Decimal        @db.Decimal(12, 2)
+  date          DateTime
+  paymentMethod PaymentMethod?
+  vendorName    String?
+  billNumber    String?
+  notes         String?
+  recordedById  String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([date])
+  @@index([projectId])
+  @@map("expenses")
+}
+
+// ─── MATERIALS ───────────────────────────────────────────────────────────────
+
+model Material {
+  id           String   @id @default(cuid())
+  name         String
+  unit         String
+  category     String?
+  description  String?
+  minimumStock Decimal? @db.Decimal(12, 3)
+  currentStock Decimal  @default(0) @db.Decimal(12, 3)
+  unitCost     Decimal? @db.Decimal(10, 2)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  transactions MaterialTransaction[]
+
+  @@map("materials")
+}
+
+model MaterialTransaction {
+  id            String          @id @default(cuid())
+  materialId    String
+  projectId     String?
+  supplierId    String?
+  type          MaterialTxnType
+  quantity      Decimal         @db.Decimal(12, 3)
+  unitCost      Decimal?        @db.Decimal(10, 2)
+  totalCost     Decimal?        @db.Decimal(12, 2)
+  invoiceNumber String?
+  date          DateTime
+  notes         String?
+  recordedById  String?
+  createdAt     DateTime        @default(now())
+
+  material Material  @relation(fields: [materialId], references: [id])
+  project  Project?  @relation(fields: [projectId], references: [id])
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+
+  @@index([date])
+  @@index([materialId])
+  @@map("material_transactions")
+}
+
+// ─── SUPPLIERS ───────────────────────────────────────────────────────────────
+
+model Supplier {
+  id            String   @id @default(cuid())
+  name          String
+  contactPerson String?
+  phone         String?
+  email         String?
+  address       String?
+  gstNumber     String?
+  category      String?
+  bankDetails   String?
+  notes         String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  payments     SupplierPayment[]
+  transactions MaterialTransaction[]
+
+  @@map("suppliers")
+}
+
+model SupplierPayment {
+  id              String         @id @default(cuid())
+  supplierId      String
+  amount          Decimal        @db.Decimal(12, 2)
+  date            DateTime
+  paymentMethod   PaymentMethod?
+  referenceNumber String?
+  invoiceNumber   String?
+  notes           String?
+  recordedById    String?
+  createdAt       DateTime       @default(now())
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+
+  @@index([date])
+  @@map("supplier_payments")
+}
+
+// ─── CLIENT PAYMENTS ─────────────────────────────────────────────────────────
+
+model ClientPayment {
+  id              String         @id @default(cuid())
+  projectId       String
+  clientId        String
+  amount          Decimal        @db.Decimal(12, 2)
+  date            DateTime
+  status          PaymentStatus  @default(pending)
+  paymentMethod   PaymentMethod?
+  referenceNumber String?
+  invoiceNumber   String?
+  notes           String?
+  recordedById    String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+  client  Client  @relation(fields: [clientId], references: [id])
+
+  @@index([date])
+  @@index([clientId])
+  @@map("client_payments")
+}
+
+// ─── PROGRESS REPORTS ────────────────────────────────────────────────────────
+
+model ProgressReport {
+  id                String    @id @default(cuid())
+  projectId         String?
+  supervisorId      String?
+  weekStart         DateTime  @db.Date
+  weekEnd           DateTime  @db.Date
+  progressPercent   Int
+  workDone          String
+  issuesFound       String?
+  nextWeekPlan      String?
+  weatherConditions String?
+  labourCount       Int?
+  notes             String?
+  isApproved        Boolean   @default(false)
+  approvedById      String?
+  approvedAt        DateTime?
+  submittedById     String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  project    Project?   @relation(fields: [projectId], references: [id])
+  supervisor Worker?    @relation(fields: [supervisorId], references: [id])
+  photos     Document[]
+
+  @@map("progress_reports")
+}
+
+// ─── DOCUMENTS ───────────────────────────────────────────────────────────────
+
+model Document {
+  id               String   @id @default(cuid())
+  projectId        String?
+  progressReportId String?
+  name             String
+  originalName     String
+  mimeType         String
+  size             Int // bytes
+  storageKey       String // Supabase storage path
+  publicUrl        String?
+  category         String? // drawing, invoice, photo, agreement, etc.
+  uploadedById     String?
+  createdAt        DateTime @default(now())
+
+  project        Project?        @relation(fields: [projectId], references: [id])
+  progressReport ProgressReport? @relation(fields: [progressReportId], references: [id])
+
+  @@index([projectId])
+  @@map("documents")
+}
