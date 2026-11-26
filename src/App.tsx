@@ -46,6 +46,7 @@ import {
 } from '@/src/features/portals/ClientPages';
 import { ClientsManagementPage } from '@/src/features/clients/ClientsManagementPage';
 import { ReportsPage } from '@/src/features/reports/ReportsPage';
+import { DocumentsPage } from '@/src/features/documents/DocumentsPage';
 import { ModulePlaceholderPage } from '@/src/features/placeholders/ModulePlaceholderPage';
 
 function FallbackHomeRedirect() {
@@ -216,6 +217,14 @@ export default function App() {
                 element={
                   <RoleRouteGuard allowedRoles={['owner']}>
                     <ReportsPage />
+                  </RoleRouteGuard>
+                }
+              />
+              <Route
+                path="/documents"
+                element={
+                  <RoleRouteGuard allowedRoles={['owner', 'supervisor']}>
+                    <DocumentsPage />
                   </RoleRouteGuard>
                 }
               />

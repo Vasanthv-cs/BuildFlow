@@ -102,6 +102,7 @@ export const ROLE_NAV_GROUPS: Record<AppRole, RoleNavGroup[]> = {
       label: 'Business',
       items: [
         { label: 'Reports', to: '/reports', icon: BarChart3 },
+        { label: 'Document Centre', to: '/documents', icon: FileText },
         { label: 'Settings', to: '/settings', icon: Settings },
       ],
     },
@@ -120,6 +121,7 @@ export const ROLE_NAV_GROUPS: Record<AppRole, RoleNavGroup[]> = {
       label: 'Field Reporting',
       items: [
         { label: 'Weekly Reports', to: '/supervisor/weekly-reports', icon: ClipboardList },
+        { label: 'Document Centre', to: '/documents', icon: FileText },
         { label: 'Site Photos', to: '/supervisor/photos', icon: Camera },
         { label: 'Bills and Receipts', to: '/supervisor/bills', icon: Receipt },
         { label: 'Work Progress', to: '/supervisor/progress', icon: ClipboardCheck },
@@ -266,6 +268,7 @@ export const ROUTE_POLICIES: RoutePolicy[] = [
   { pattern: /^\/quotations$/, allowedRoles: ['owner'], title: 'Quotations' },
   { pattern: /^\/site-progress$/, allowedRoles: ['owner'], title: 'Site Progress' },
   { pattern: /^\/reports$/, allowedRoles: ['owner'], title: 'Reports' },
+  { pattern: /^\/documents$/, allowedRoles: ['owner', 'supervisor'], title: 'Document Centre' },
   { pattern: /^\/settings$/, allowedRoles: ['owner'], title: 'Settings' },
 
   // Shared Owner + Supervisor operational attendance route
