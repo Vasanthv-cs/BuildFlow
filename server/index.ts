@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import path from 'path';
+import fs from 'fs';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -17,6 +19,7 @@ import suppliersRouter from './routes/suppliers.js';
 import paymentsRouter from './routes/payments.js';
 import wagesRouter from './routes/wages.js';
 import reportsRouter from './routes/reports.js';
+import documentsRouter from './routes/documents.js';
 
 const app = express();
 
@@ -67,8 +70,19 @@ app.use('/api/v1/suppliers', suppliersRouter);
 app.use('/api/v1/payments', paymentsRouter);
 app.use('/api/v1/wages', wagesRouter);
 app.use('/api/v1/reports', reportsRouter);
+app.use('/api/v1/documents', documentsRouter);
 
-// ── 404 handler ──────────────────────────────────────────────────────────────
+// ── Serve static frontend SPA in production ──────────────────────────────────
+const frontendDist = path.resolve(process.cwd(), 'dist');
+if (fs.existsSync(frontendDist)) {
+  app.use(express.static(frontendDist));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
+
+// ── 404 handler for unmatched API routes ─────────────────────────────────────
 app.use((_req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });

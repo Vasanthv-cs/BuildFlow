@@ -1,10 +1,11 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { DEMO_USERS, INITIAL_CLIENT_CREDENTIALS } from '@/src/data/workforceMockData';
 import {
   getRolePermissions,
   type RolePermissions,
 } from '@/src/config/permissions';
 import type { AppRole, AuthUser, ClientCredentialAccount, Worker } from '@/src/types';
+import { authApi, ApiError } from '@/src/services/apiClient';
 
 const STORAGE_KEY = 'buildflow_demo_auth_user_id';
 
@@ -66,7 +67,7 @@ interface AuthContextValue {
   loginWithCredentials: (
     username: string,
     password: string,
-  ) => { ok: boolean; user?: AuthUser; error?: string };
+  ) => Promise<{ ok: boolean; user?: AuthUser; error?: string }>;
   switchRole: (role: AppRole) => AuthUser | null;
   logout: () => void;
 }
@@ -211,29 +212,100 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  // Verify active session with backend on initial mount
+  useEffect(() => {
+    authApi
+      .getMe()
+      .then(({ user }) => {
+        if (!user) return;
+        const matched = registeredUsers.find(
+          (u) => u.email.toLowerCase() === user.email.toLowerCase(),
+        );
+        if (matched) {
+          persistUser(matched);
+        } else {
+          persistUser({
+            id: user.userId,
+            username: user.email.split('@')[0],
+            fullName: user.email.split('@')[0],
+            email: user.email,
+            phone: '',
+            role: user.role as AppRole,
+            title: `${user.role.toUpperCase()} (Authenticated)`,
+            initials: user.role.slice(0, 2).toUpperCase(),
+            assignedProjectIds: [] as string[],
+          });
+        }
+      })
+      .catch(() => {
+        // Backend offline or no active session - fallback to local storage
+      });
+  }, [registeredUsers, persistUser]);
+
   const loginWithCredentials = useCallback(
-    (
+    async (
       username: string,
       password: string,
-    ): { ok: boolean; user?: AuthUser; error?: string } => {
+    ): Promise<{ ok: boolean; user?: AuthUser; error?: string }> => {
       const normalized = username.trim().toLowerCase();
       if (!normalized || !password.trim()) {
-        return { ok: false, error: 'Enter both username and demo password.' };
+        return { ok: false, error: 'Enter both username and password.' };
       }
       const matched = registeredUsers.find(
         (u) =>
           u.username.toLowerCase() === normalized ||
           u.email.toLowerCase() === normalized,
       );
-      if (!matched) {
+
+      // Attempt authentication with Express backend
+      const emailCandidate =
+        matched?.email ||
+        (normalized.includes('@') ? normalized : `${normalized}@buildflow.app`);
+
+      try {
+        const res = await authApi.login({ email: emailCandidate, password });
+        if (res?.user) {
+          const authUser: AuthUser = matched
+            ? matched
+            : {
+                id: res.user.id,
+                username: res.user.email.split('@')[0],
+                fullName: res.user.name || res.user.email,
+                email: res.user.email,
+                phone: '',
+                role: res.user.role as AppRole,
+                title: `${res.user.role.toUpperCase()} (Authenticated)`,
+                initials: (res.user.name || res.user.role).slice(0, 2).toUpperCase(),
+                assignedProjectIds: [] as string[],
+              };
+          persistUser(authUser);
+          return { ok: true, user: authUser };
+        }
+      } catch (err: any) {
+        if (err instanceof ApiError && err.status === 401) {
+          return { ok: false, error: 'Invalid email or password.' };
+        }
+        // Fallback to local demo credentials if server is not reachable
+        if (matched) {
+          persistUser(matched);
+          return { ok: true, user: matched };
+        }
         return {
           ok: false,
-          error:
-            'Demo account not found. Use one of the demo usernames or click a quick-sign-in role card below.',
+          error: err.message || 'Unable to connect to authentication server.',
         };
       }
-      persistUser(matched);
-      return { ok: true, user: matched };
+
+      if (matched) {
+        persistUser(matched);
+        return { ok: true, user: matched };
+      }
+
+      return {
+        ok: false,
+        error:
+          'Account not found. Use one of the demo usernames or click a quick-sign-in role card below.',
+      };
     },
     [registeredUsers, persistUser],
   );
@@ -251,6 +323,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    authApi.logout().catch(() => {});
     persistUser(null);
   }, [persistUser]);
 

@@ -51,10 +51,10 @@ export function DemoLoginPage() {
     navigate(ROLE_DEFAULT_HOME[user.role], { replace: true });
   };
 
-  const handleCredentialSubmit = (e: React.FormEvent) => {
+  const handleCredentialSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const result = loginWithCredentials(username, password);
+    const result = await loginWithCredentials(username, password);
     if (!result.ok || !result.user) {
       setError(result.error ?? 'Unable to sign in.');
       return;

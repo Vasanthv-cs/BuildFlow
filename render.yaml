@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: buildflow
+    env: node
+    plan: free
+    buildCommand: npm install --legacy-peer-deps && npm run db:generate && npm run server:build && npm run build
+    startCommand: npm run server:start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: COOKIE_SECRET
+        generateValue: true
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_BUCKET
+        value: buildflow-docs
